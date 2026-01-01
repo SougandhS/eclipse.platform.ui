@@ -14,6 +14,8 @@
  *******************************************************************************/
 package org.eclipse.ui.internal.ide.application.dialogs;
 
+import java.nio.file.InvalidPathException;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -22,6 +24,11 @@ import org.eclipse.jface.dialogs.Dialog;
 import org.eclipse.jface.preference.PreferencePage;
 import org.eclipse.osgi.util.TextProcessor;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.dnd.Clipboard;
+import org.eclipse.swt.dnd.TextTransfer;
+import org.eclipse.swt.dnd.Transfer;
+import org.eclipse.swt.events.KeyAdapter;
+import org.eclipse.swt.events.KeyEvent;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
@@ -59,6 +66,8 @@ public class RecentWorkspacesPreferencePage extends PreferencePage
 	private Spinner maxWorkspacesField;
 	private List workspacesList;
 	private Button removeButton;
+	private Button copyButton;
+	private Button pasteButton;
 
 
 	@Override
@@ -127,9 +136,16 @@ public class RecentWorkspacesPreferencePage extends PreferencePage
 		final GridData gd_workspacesList = new GridData(SWT.FILL, SWT.FILL, true, true);
 		workspacesList.setLayoutData(gd_workspacesList);
 
-		removeButton = new Button(recentWorkspacesGroup, SWT.NONE);
-		final GridData gd_removeButton = new GridData(SWT.CENTER, SWT.TOP, false, false);
-		removeButton.setLayoutData(gd_removeButton);
+		Composite buttonArea = new Composite(recentWorkspacesGroup, SWT.NONE);
+		buttonArea.setLayoutData(new GridData(SWT.CENTER, SWT.TOP, false, false));
+
+		GridLayout buttonLayout = new GridLayout(1, false);
+		buttonLayout.marginWidth = 0;
+		buttonLayout.marginHeight = 0;
+		buttonLayout.verticalSpacing = 5; // optional, Eclipse-like
+		buttonArea.setLayout(buttonLayout);
+
+		removeButton = new Button(buttonArea, SWT.PUSH | SWT.CENTER);
 		removeButton.setText(IDEWorkbenchMessages.RecentWorkspacesPreferencePage_RemoveButton_label);
 		removeButton.setEnabled(false);
 
@@ -141,13 +157,46 @@ public class RecentWorkspacesPreferencePage extends PreferencePage
 				}
 			});
 
+		copyButton = new Button(buttonArea, SWT.PUSH | SWT.CENTER);
+		copyButton.setText(IDEWorkbenchMessages.RecentWorkspacesPreferencePage_CopyButton_label);
+		copyButton.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent event) {
+				copySelectedWorkspaces();
+			}
+		});
+
+		pasteButton = new Button(buttonArea, SWT.PUSH | SWT.CENTER);
+		pasteButton.setText(IDEWorkbenchMessages.RecentWorkspacesPreferencePage_PasteButton_label);
+		pasteButton.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent event) {
+				pasteSelectedWorkspaces();
+			}
+		});
+
+		GridData gdRemove = new GridData(SWT.FILL, SWT.CENTER, true, false);
+		removeButton.setLayoutData(gdRemove);
+
+		GridData gdCopy = new GridData(SWT.FILL, SWT.CENTER, true, false);
+		copyButton.setLayoutData(gdCopy);
+		GridData gdPaste = new GridData(SWT.FILL, SWT.CENTER, true, false);
+		pasteButton.setLayoutData(gdPaste);
+
 		workspacesList.addSelectionListener(new SelectionAdapter() {
 				@Override
 				public void widgetSelected(SelectionEvent event) {
 					updateRemoveButton();
 				}
 			});
-
+		workspacesList.addKeyListener(new KeyAdapter() {
+			@Override
+			public void keyPressed(KeyEvent e) {
+				if ((e.stateMask & SWT.MOD1) != 0 && (e.keyCode == 'c' || e.keyCode == 'C')) {
+					copySelectedWorkspaces();
+				}
+			}
+		});
 		String[] recentWorkspaces = workspacesData.getRecentWorkspaces();
 		for (String aWorkspace : recentWorkspaces) {
 			if (aWorkspace != null) {
@@ -173,6 +222,55 @@ public class RecentWorkspacesPreferencePage extends PreferencePage
 		workspacesList.setItems(newItems);
 	}
 
+	protected void copySelectedWorkspaces() {
+
+		java.util.List<String> workspaces = new ArrayList<>(Arrays.asList(workspacesList.getItems()));
+		int[] selected = workspacesList.getSelectionIndices();
+		StringBuilder b = new StringBuilder();
+		for (int index : selected) {
+			b.append(workspaces.get(index));
+			b.append(System.lineSeparator());
+		}
+		b.deleteCharAt(b.length() - 1);
+		Clipboard clipboard = new Clipboard(getShell().getDisplay());
+		try {
+			clipboard.setContents(new Object[] { b.toString() }, new Transfer[] { TextTransfer.getInstance() });
+		} finally {
+			clipboard.dispose();
+		}
+	}
+
+	protected void pasteSelectedWorkspaces() {
+
+		java.util.List<String> workspaces = new ArrayList<>(Arrays.asList(workspacesList.getItems()));
+		Clipboard clipboard = new Clipboard(getShell().getDisplay());
+		try {
+			Object data = clipboard.getContents(TextTransfer.getInstance());
+			String entries[] = ((String) data).split("\\R"); //$NON-NLS-1$
+			for (String work : entries) {
+				if (isValidFolderPath(work) && !workspaces.contains(work.trim())) {
+					workspaces.add(work);
+				}
+			}
+			String[] newItems = new String[workspaces.size()];
+			workspaces.toArray(newItems);
+			workspacesList.setItems(newItems);
+		} finally {
+			clipboard.dispose();
+		}
+	}
+
+	private boolean isValidFolderPath(String path) {
+		if (path == null || path.trim().isEmpty()) {
+			return false;
+		}
+		try {
+			Paths.get(path);
+			return true;
+		} catch (InvalidPathException e) {
+			return false;
+		}
+	}
 
 	@Override
 	protected void performDefaults() {

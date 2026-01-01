@@ -1154,6 +1154,10 @@ public class IDEWorkbenchMessages extends NLS {
 	public static String IDEApplication_Ws_Lock_Owner_P_Id;
 	public static String IDEApplication_Ws_Lock_Owner_Message;
 
+	public static String RecentWorkspacesPreferencePage_CopyButton_label;
+
+	public static String RecentWorkspacesPreferencePage_PasteButton_label;
+
 	static {
 		// load message values from bundle file
 		NLS.initializeMessages(BUNDLE_NAME, IDEWorkbenchMessages.class);
